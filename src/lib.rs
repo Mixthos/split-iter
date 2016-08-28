@@ -18,15 +18,18 @@
 use std::rc::Rc;
 use std::collections::VecDeque;
 use std::cell::RefCell;
+use std::fmt::Debug;
+use std::fmt::Formatter;
+use std::fmt::Error as FmtError;
 
 
 /// Shared inner state for two `Split`s.
-struct InnerSplit<I, P> where
+struct SharedSplitState<I, P> where
 	I: Iterator,
 	P: FnMut(&I::Item) -> bool
 {
 	/// Inner iterator.
-	inner: I,
+	iter: I,
 	/// Predicate that chooses whether an item
 	/// goes left (`false`) or right (`true`).
 	predicate: P,
@@ -37,14 +40,14 @@ struct InnerSplit<I, P> where
 	is_right_cached: bool,
 }
 
-impl<I, P> InnerSplit<I, P> where
+impl<I, P> SharedSplitState<I, P> where
 	I: Iterator,
 	P: FnMut(&I::Item) -> bool
 {
 	/// Creates shared inner state for two `Split`s.
-	fn new(inner: I, predicate: P) -> InnerSplit<I, P> {
-		InnerSplit {
-			inner: inner,
+	fn new(iter: I, predicate: P) -> SharedSplitState<I, P> {
+		SharedSplitState {
+			iter: iter,
 			predicate: predicate,
 			cache: VecDeque::new(),
 			is_right_cached: false,
@@ -61,7 +64,7 @@ impl<I, P> InnerSplit<I, P> where
 		}
 		
 		// From inner iterator
-		while let Some(next) = self.inner.next() {
+		while let Some(next) = self.iter.next() {
 			if (self.predicate)(&next) == is_right {
 				return Some(next);
 			} else {
@@ -86,7 +89,7 @@ pub struct Split<I, P> where
 	P: FnMut(&I::Item) -> bool
 {
 	/// Shared state with the opposite iterator.
-	inner: Rc<RefCell<InnerSplit<I, P>>>,
+	shared: Rc<RefCell<SharedSplitState<I, P>>>,
 	/// Is the iterator the right one or the left one?
 	is_right: bool,
 }
@@ -98,7 +101,18 @@ impl<I, P> Iterator for Split<I, P> where
 	type Item = I::Item;
 	
 	fn next(&mut self) -> Option<I::Item> {
-		self.inner.borrow_mut().next(self.is_right)
+		self.shared.borrow_mut().next(self.is_right)
+	}
+}
+
+impl<I, P> Debug for Split<I, P> where
+	I: Iterator + Debug,
+	P: FnMut(&I::Item) -> bool
+{
+	fn fmt(&self, fmt: &mut Formatter) -> Result<(), FmtError> {
+		fmt.debug_struct("Split")
+			.field("iter", &self.shared.borrow().iter)
+			.finish()
 	}
 }
 
@@ -121,19 +135,19 @@ impl<I> Splittable<I> for I where
 	fn split<P>(self, predicate: P) -> (Split<I, P>, Split<I, P>)
 		where P: FnMut(&I::Item) -> bool
 	{
-		let inner = Rc::new(
+		let shared = Rc::new(
 			RefCell::new(
-				InnerSplit::new(self, predicate)
+				SharedSplitState::new(self, predicate)
 			)
 		);
 		
 		let left = Split {
-			inner: inner.clone(),
+			shared: shared.clone(),
 			is_right: false,
 		};
 		
 		let right = Split {
-			inner: inner,
+			shared: shared,
 			is_right: true,
 		};
 		
