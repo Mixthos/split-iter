@@ -1,0 +1,11 @@
+[package]
+name = "split-iter"
+version = "0.1.0"
+authors = ["Georg Echterling <georg@echterling.de>"]
+
+description = "Allows splitting of iterators."
+readme = "README.md"
+license = "MIT"
+
+documentation = "http://mixthos.github.com/split-iter"
+repository = "https://github.com/Mixthos/split-iter"
